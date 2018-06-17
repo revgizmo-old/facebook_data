@@ -1,0 +1,120 @@
+---
+title: "facebook_data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## facebook_data
+
+This is a project to work with downloaded facebook data
+
+Much of this analysis is informed by Deeply Trivial's 6/14 post: [Working with Your Facebook Data in R](http://www.deeplytrivial.com/2018/06/working-with-your-facebook-data-in-r.html)
+
+```{r load_posts}
+
+library(jsonlite)
+
+#check to make sure your_posts exists and path is correct
+file.exists("C:/Users/Admin/Documents/data downloads/facebook-conorhealy/posts/your_posts.json") 
+
+#load fb_posts
+fb_posts <- fromJSON("C:/Users/Admin/Documents/data downloads/facebook-conorhealy/posts/your_posts.json")
+
+```
+
+## Identify Status Updates
+
+```{r status_updates}
+
+library(tidyverse)
+library(anytime)
+library(qdapRegex)
+
+
+url_pattern <- "http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+" #to be used in extracting urls, should find a better way than having to use a precise REGEX like this
+
+
+status_updates <- fb_posts$status_updates
+
+status_updates <- status_updates %>% 
+  mutate(timestamp = anytime(timestamp), #use the anytime package to convert timestamp to datetime
+         author = word(string = title, start = 1, end = 2, sep = fixed(" ")), #identify the author by using the word function to extract the first 2 words
+         link_urls = str_extract(attachments, url_pattern), #extract the urls of links
+         post_text = rm_between(text.var = data, '"', '"', extract = TRUE),
+         post_text = as.character(post_text)
+         ) 
+
+status_updates %>% 
+  head()
+
+
+```
+
+## The most frequent words used in my updates
+
+
+```{r my_post_text}
+
+library(tidytext)
+
+#unnest the individual words in my satus updates and remove stopwords
+my_post_text <- status_updates %>%
+  unnest_tokens(word, post_text) %>%
+  anti_join(stop_words)
+
+
+counts <- my_post_text %>%
+  filter(author == "Conor Healy") %>%
+  drop_na(word) %>%
+  count(word, sort = TRUE)
+
+counts 
+
+drop_words <- c("0080","0099","009c")
+
+counts <- counts %>%
+  filter(!word %in% drop_words)
+
+counts
+
+
+```
+
+## Wordcloud
+
+* Where is Heather?
+* Where is Michael?
+* *Erin is young enough that she should be on this list, but tiny
+
+```{r wordcloud}
+
+library(wordcloud)
+
+counts %>%
+  with(wordcloud(word, n, max.words = 50))
+
+
+```
+
+
+
+
+## Wordcloud with sentiment analysis
+
+
+
+```{r wordcloud_sentiment}
+
+library(reshape2)
+
+counts %>%
+  inner_join(get_sentiments("bing")) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("red","darkgreen"), max.words = 100)
+
+
+```
