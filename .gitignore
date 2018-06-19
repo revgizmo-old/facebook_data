@@ -3,3 +3,7 @@
 .RData
 .Ruserdata
 .Rproj
+*.Rproj
+facebook_data_cache/
+facebook_data_files/
+facebook_data.html

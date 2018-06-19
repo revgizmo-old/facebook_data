@@ -26,6 +26,24 @@ fb_posts <- fromJSON("C:/Users/Admin/Documents/data downloads/facebook-conorheal
 
 ```
 
+
+## Exploring fb_posts
+
+* fb-Posts is just a list wrapper of the status_updates dataframe
+
+```{r}
+
+fb_posts %>% 
+  names()
+
+fb_posts %>% 
+  length()
+
+
+```
+
+
+
 ## Identify Status Updates
 
 ```{r status_updates}
@@ -33,6 +51,7 @@ fb_posts <- fromJSON("C:/Users/Admin/Documents/data downloads/facebook-conorheal
 library(tidyverse)
 library(anytime)
 library(qdapRegex)
+library(lubridate)
 
 
 url_pattern <- "http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+" #to be used in extracting urls, should find a better way than having to use a precise REGEX like this
@@ -40,13 +59,35 @@ url_pattern <- "http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-
 
 status_updates <- fb_posts$status_updates
 
+if(exists("fb_posts")) {rm(fb_posts)}
+
 status_updates <- status_updates %>% 
   mutate(timestamp = anytime(timestamp), #use the anytime package to convert timestamp to datetime
+         min = min(timestamp), #use the lubridate package to parse timestamp 
+         max = max(timestamp),
+         year = year(timestamp),
+         month = month(timestamp),
+         day = day(timestamp),
+         wday = wday(timestamp),
+         hour = hour(timestamp),
          author = word(string = title, start = 1, end = 2, sep = fixed(" ")), #identify the author by using the word function to extract the first 2 words
+         auto_author = author == "Conor Healy",
          link_urls = str_extract(attachments, url_pattern), #extract the urls of links
          post_text = rm_between(text.var = data, '"', '"', extract = TRUE),
-         post_text = as.character(post_text)
+         post_text = as.character(post_text),
+         attachments_text = rm_between(text.var = attachments, '"', '"', extract = TRUE),
+         attachments_text = as.character(attachments_text),
+         tags_text = rm_between(text.var = tags, '"', '"', extract = TRUE),
+         tags_text = as.character(tags_text)
          ) 
+
+status_updates %>% 
+  head()
+
+status_updates <- status_updates %>% 
+  mutate(
+  )
+
 
 status_updates %>% 
   filter(author != "Conor Healy") %>% 
@@ -148,41 +189,11 @@ counts <- my_post_text %>%
 ```
 
 
-## Exploring fb_posts
-
-* fb-Posts is just a list wrapper of the status_updates dataframe
-
-```{r}
-
-fb_posts %>% 
-  names()
-
-fb_posts %>% 
-  length()
-
-
-```
-
 
 ## Exploring status_updates over time
 
 ```{r}
 
-library(lubridate)
-
-status_updates %>% 
-  head()
-
-status_updates <- status_updates %>% 
-  mutate(min = min(timestamp),
-         max = max(timestamp),
-         year = year(timestamp),
-         month = month(timestamp),
-         day = day(timestamp),
-         wday = wday(timestamp),
-         hour = hour(timestamp),
-         auto_author = author == "Conor Healy"
-  )
 
 status_updates %>% 
   ggplot(aes(x = year, fill = auto_author )) +
@@ -219,7 +230,7 @@ status_updates %>%
 ```
 
 
-## Exploring status_updates 
+## Exploring tags_text 
 
 
 
@@ -228,6 +239,10 @@ status_updates %>%
 status_updates %>% 
   head()
 
+status_updates %>% 
+ count(tags_text) %>% 
+  arrange(-n)
+         
 
   
 ```
