@@ -4,7 +4,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
 library(tidyverse)
 ```
 
@@ -49,13 +49,18 @@ status_updates <- status_updates %>%
          ) 
 
 status_updates %>% 
+  filter(author != "Conor Healy") %>% 
   head()
+
+status_updates %>% 
+  count(author)
 
 
 ```
 
 ## The most frequent words used in my updates
 
+* Removing some "happy", "birthday", "hbd", and some weird non-words to make the list more informative
 
 ```{r my_post_text}
 
@@ -74,7 +79,7 @@ counts <- my_post_text %>%
 
 counts 
 
-drop_words <- c("0080","0099","009c")
+drop_words <- c("0080","0099","009c", "happy", "birthday", "hbd")
 
 counts <- counts %>%
   filter(!word %in% drop_words)
@@ -118,3 +123,112 @@ counts %>%
 
 
 ```
+
+
+
+
+## People who post the most to my timeline:
+
+```{r authors}
+
+#count by author
+status_updates %>% 
+  filter(author != "Conor Healy") %>% 
+  count(author) %>% 
+  arrange(-n)
+
+#word counts
+counts <- my_post_text %>%
+  filter(author != "Conor Healy") %>%
+  drop_na(word) %>%
+  filter(!word %in% drop_words) %>% 
+  count(word, sort = TRUE)
+
+
+```
+
+
+## Exploring fb_posts
+
+* fb-Posts is just a list wrapper of the status_updates dataframe
+
+```{r}
+
+fb_posts %>% 
+  names()
+
+fb_posts %>% 
+  length()
+
+
+```
+
+
+## Exploring status_updates over time
+
+```{r}
+
+library(lubridate)
+
+status_updates %>% 
+  head()
+
+status_updates <- status_updates %>% 
+  mutate(min = min(timestamp),
+         max = max(timestamp),
+         year = year(timestamp),
+         month = month(timestamp),
+         day = day(timestamp),
+         wday = wday(timestamp),
+         hour = hour(timestamp),
+         auto_author = author == "Conor Healy"
+  )
+
+status_updates %>% 
+  ggplot(aes(x = year, fill = auto_author )) +
+  geom_bar()
+  
+
+status_updates %>% 
+  ggplot(aes(x = month, fill = auto_author )) +
+  geom_bar()
+
+
+status_updates %>% 
+  ggplot(aes(x = day, fill = auto_author )) +
+  geom_bar()
+
+
+status_updates %>% 
+  ggplot(aes(x = wday, fill = auto_author )) +
+  geom_bar()
+
+
+status_updates %>% 
+  ggplot(aes(x = hour, fill = auto_author )) +
+  geom_bar() 
+
+status_updates %>% 
+  ggplot(aes(x = hour, fill = auto_author )) +
+  geom_bar() +
+  coord_polar(theta = "x", start = 0)
+
+
+
+
+```
+
+
+## Exploring status_updates 
+
+
+
+```{r}
+
+status_updates %>% 
+  head()
+
+
+  
+```
+
