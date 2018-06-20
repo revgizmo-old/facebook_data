@@ -230,7 +230,7 @@ status_updates %>%
 ```
 
 
-## Exploring tags_text 
+## Exploring tags & tags_text 
 
 
 
@@ -242,8 +242,45 @@ status_updates %>%
 status_updates %>% 
  count(tags_text) %>% 
   arrange(-n)
-         
+    
+tags <- status_updates$tags    
 
-  
+tags %>% 
+  names()
+
+tags[1]
+
+str(tags)
+
+length(tags)
+
+str(tags[[1]])
+str(tags[[8]])
+str(tags[[942]])
+
+status_updates$tags %>%
+  flatten_chr() %>% 
+  as_tibble() %>% 
+  count(value) %>% 
+  arrange(-n)
+
+
+
+```
+
+## Exploring data & post_text 
+
+
+
+```{r}
+
+status_updates %>% 
+  head()
+
+status_updates %>% 
+ count(post_text) %>% 
+  arrange(-n)
+    
+
 ```
 
