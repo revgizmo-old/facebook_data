@@ -6,9 +6,13 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
 library(tidyverse)
+library(anytime)
+library(qdapRegex)
+library(lubridate)
+
 ```
 
-## facebook_data
+# facebook_data
 
 This is a project to work with downloaded facebook data
 
@@ -44,59 +48,254 @@ fb_posts %>%
 
 
 
-## Identify Status Updates
+## Exploring status_updates
 
-```{r status_updates}
+* status_updates is the real dataframe, but it contains a bunch of nested lists
 
-library(tidyverse)
-library(anytime)
-library(qdapRegex)
-library(lubridate)
-
-
-url_pattern <- "http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+" #to be used in extracting urls, should find a better way than having to use a precise REGEX like this
-
+```{r}
 
 status_updates <- fb_posts$status_updates
 
-if(exists("fb_posts")) {rm(fb_posts)}
+if(exists("fb_posts")) {rm(fb_posts)} #don't need fb_posts anymore
+
+status_updates %>% 
+  length()
+
+status_updates %>% 
+  names()
+
+status_updates %>% 
+  nrow()
+
+status_updates[1,]
+
+```
+
+
+
+## Clean up timestamp
+
+* timestamp is in some ridiculous format, so lets fix that.
+
+```{r}
 
 status_updates <- status_updates %>% 
   mutate(timestamp = anytime(timestamp), #use the anytime package to convert timestamp to datetime
-         min = min(timestamp), #use the lubridate package to parse timestamp 
-         max = max(timestamp),
          year = year(timestamp),
          month = month(timestamp),
-         day = day(timestamp),
-         wday = wday(timestamp),
+         day_of_month = day(timestamp),
          hour = hour(timestamp),
-         author = word(string = title, start = 1, end = 2, sep = fixed(" ")), #identify the author by using the word function to extract the first 2 words
-         auto_author = author == "Conor Healy",
-         link_urls = str_extract(attachments, url_pattern), #extract the urls of links
-         post_text = rm_between(text.var = data, '"', '"', extract = TRUE),
-         post_text = as.character(post_text),
-         attachments_text = rm_between(text.var = attachments, '"', '"', extract = TRUE),
-         attachments_text = as.character(attachments_text),
-         tags_text = rm_between(text.var = tags, '"', '"', extract = TRUE),
-         tags_text = as.character(tags_text)
-         ) 
+         wday = wday(timestamp)
+  ) 
 
-status_updates %>% 
-  head()
+status_updates[1,]
+
+```
+
+
+
+## Clean up data
+
+* data contains something: presumably data.
+    + when data != NULL, data contains a list of single observation dataframes, each with only one column: "post"
+    + with a little bit of painful code, we can split out the post_text and clean up (remove) the data column
+
+
+```{r}
+
+data <- status_updates$data
+
+length(data)
+
+names(data)
+
+str(data[1:5])
+
+data[[1]] #each element is just a data frame with 1 observation and one column ("post")
+
+data[[1]][[1]] # the posts are all character values
+
+names(data) <- seq_along(data) #give data some names for easier reference
+
+data2 <- unlist(data, recursive = FALSE)
+
+length(data2)
+
+data2[[1]]
 
 status_updates <- status_updates %>% 
-  mutate(
-  )
+  mutate(post_text = rm_between(text.var = data, '"', '"', extract = TRUE), #there's probably a better way, but this pulls out the text in the column that's "quoted" and returns it in the same row, so preserves the original listing.  Because each data observation is either NULL or 1 data frame with 1 observation and 1 character column, we should be able to extract the text from that character column this way
+         post_text = as.character(post_text), #need to turn the post_text list into a column
+         data = NULL #clean up data, since we've extracted all data
+  ) 
 
+status_updates[1,]
+
+rm(data, data2)
+
+```
+
+
+
+## Clean up title - create author, action, and action_nouns
+
+* title contains multiple pieces of information in a single character column, so lets split it out a bit.
+    + first 2 words are the name of the person, lets's call them "author"
+    + separate the words after author into action and action_noun to separate how they did it from what they did
+
+```{r}
+
+status_updates %>% 
+  select(title) 
+
+#looks like the first 2 words are the name of the person (at least they are for me)
+
+status_updates %>% 
+  select(title) %>% 
+  transmute(author = word(string = title, start = 1, end = 2, sep = fixed(" "))) %>% 
+  count(author) %>% 
+  arrange(-n)
+
+#create a list of 3rd words to filter out weird people with >2 words in thier name
+status_updates %>% 
+  select(title) %>% 
+  mutate(third_word = word(string = title, start = 3, end = 3, sep = fixed(" "))) %>% 
+  count(third_word) %>% 
+  filter(!third_word %in% c("Bozarth", "Mcgee")) %>% #filter out known deviants with 3+ words in their name
+  transmute(third_words = paste0(third_word, collapse = '", "')) %>% 
+  count(third_words)
+
+third_words <- c("added", "is","posted", "shared", "updated", "was", "wrote")
+
+
+#create the author field
+status_updates <- status_updates %>% 
+  mutate(third_word = word(string = title, start = 3, end = 3, sep = fixed(" ")),
+         author_words_n = ifelse(third_word %in% third_words, 2, 3),
+         author = word(string = title, start = 1, end = author_words_n, sep = fixed(" ")),
+         auto_author = author == "Conor Healy"
+         )
 
 status_updates %>% 
   filter(author != "Conor Healy") %>% 
-  head()
+  nrow()
+
 
 status_updates %>% 
-  count(author)
+  count(author) %>% 
+  arrange(-n)
 
 
+#create the action field
+status_updates <- status_updates %>% 
+  mutate(action = word(string = title, start = author_words_n + 1, end = author_words_n + 1, sep = fixed(" ")),
+         action_n = case_when(
+           action %in% c("added", "is", "recommends", "updated", "was") ~ 1,
+           action %in% c("posted", "wrote") ~ 2,
+           action %in% c("shared") ~ 3,
+           TRUE ~ 1
+         ),
+         action_detail = word(string = title, start = author_words_n + 1, end = author_words_n + action_n, sep = fixed(" ")),
+         action_detail = str_replace(action_detail, "\\.", ""),
+         title_n = str_count(title, " "), 
+         action_noun = word(string = title, start = author_words_n + action_n + 1, end = title_n + 1, sep = fixed(" ")),
+         author_words_n = NULL,
+         action_n = NULL,
+         title_n = NULL,
+         third_word = NULL
+  )
+
+status_updates %>% 
+count(action, action_detail) %>% 
+  arrange(action, -n)
+
+rm(third_words)
+
+status_updates[1,]
+
+```
+
+
+
+## Clean up attachments
+
+* attachments contains something: presumably data.
+    + when attachments != NULL, attachments contains a list of dataframes, each with complicated breakdowns of media, comments, and other context that doesn't appear easy to wrangle.
+    + I can extract link urls using the REGEX cribbed from Deeply Trivial's 6/14 post: [Working with Your Facebook Data in R](http://www.deeplytrivial.com/2018/06/working-with-your-facebook-data-in-r.html)
+    + I think I'm going to leave this alone for now
+
+```{r}
+
+url_pattern <- "http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+" #to be used in extracting urls, should find a better way than having to use a precise REGEX like this.  REGEX cribbed from Deeply Trivial's 6/14 post: [Working with Your Facebook Data in R](http://www.deeplytrivial.com/2018/06/working-with-your-facebook-data-in-r.html)
+                                                 
+attachments <- status_updates$attachments
+
+length(attachments)
+
+names(attachments)
+
+names(attachments) <- seq_along(attachments) #give attachments some names for easier reference
+
+str(attachments[1:5])
+
+status_updates <- status_updates %>% 
+  mutate(link_urls = str_extract(attachments, url_pattern), #extract the urls of links
+         link_domain = word(string = link_urls, start = 3, end = 3, sep = fixed("/")), #get the full domain name
+         link_domain = word(string = link_domain, start = -2, end = -1, sep = fixed(".")) #remove the sub-domain(s)
+  )
+
+status_updates %>% 
+  select(link_urls, link_domain) %>% 
+  count(link_domain) %>% 
+  arrange(-n)
+
+rm(attachments)
+
+status_updates[1,]
+
+```
+
+
+
+
+
+## Clean up tags
+
+* tags contains something: presumably data.
+    + when tags != NULL, tags contains a list of charater vectors, each with names of people
+    + I need to build this out more
+    
+
+
+```{r tags}
+
+tags <- status_updates$tags
+
+length(tags)
+
+names(tags)
+
+names(tags) <- seq_along(tags) #give attachments some names for easier reference
+
+str(tags[1:10])
+
+
+compact_tags <- plyr::compact(tags)
+str(compact_tags)
+
+
+status_updates <- status_updates %>% 
+  mutate(tags_text = rm_between(text.var = tags, '"', '"', extract = TRUE), #there's probably a better way, but this pulls out the text in the column that's "quoted" and returns it in the same row, so preserves the original listing.  Because each data observation is either NULL or 1 data frame with 1 observation and 1 character column, we should be able to extract the text from that character column this way
+         tags_text = as.character(tags_text)
+         )
+
+status_updates %>% 
+  count(tags_text) %>% 
+  arrange(-n)
+
+rm(tags)
+
+status_updates[1,]
 ```
 
 ## The most frequent words used in my updates
@@ -206,7 +405,7 @@ status_updates %>%
 
 
 status_updates %>% 
-  ggplot(aes(x = day, fill = auto_author )) +
+  ggplot(aes(x = day_of_month, fill = auto_author )) +
   geom_bar()
 
 
@@ -230,7 +429,7 @@ status_updates %>%
 ```
 
 
-## Exploring tags_text 
+## Exploring tags & tags_text 
 
 
 
@@ -242,8 +441,45 @@ status_updates %>%
 status_updates %>% 
  count(tags_text) %>% 
   arrange(-n)
-         
+    
+tags <- status_updates$tags    
 
-  
+tags %>% 
+  names()
+
+tags[1]
+
+str(tags)
+
+length(tags)
+
+str(tags[[1]])
+str(tags[[8]])
+str(tags[[942]])
+
+status_updates$tags %>%
+  flatten_chr() %>% 
+  as_tibble() %>% 
+  count(value) %>% 
+  arrange(-n)
+
+
+
+```
+
+## Exploring data & post_text 
+
+
+
+```{r}
+
+status_updates %>% 
+  head()
+
+status_updates %>% 
+ count(post_text) %>% 
+  arrange(-n)
+    
+
 ```
 
