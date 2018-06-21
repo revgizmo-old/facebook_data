@@ -495,7 +495,6 @@ status_updates %>%
  count(post_text) %>% 
   arrange(-n)
     
-<<<<<<< HEAD
 
 ```
 
@@ -563,8 +562,6 @@ some good stuff from [gluc](https://gist.github.com/gluc)/[Desc_JSON_to_df.md]
 #                                              filterFun = function(x) x$name != "owner"
 # )
 
-=======
->>>>>>> 6abfc53ff10c6dfc89c463cae37b03398a798253
 
 ```
 
